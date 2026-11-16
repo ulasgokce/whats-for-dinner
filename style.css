@@ -190,6 +190,7 @@ code { background: var(--card); border: 1px solid var(--line); padding: 1px 6px;
 .shop li label { display: flex; gap: 10px; align-items: center; padding: 9px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .shop input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
 .shop .nm { flex: 1; }
+.shop .nm::first-letter { text-transform: uppercase; }
 .shop .am { color: var(--muted); font-size: .88rem; text-align: right; }
 .shop li.done .nm, .shop li.done .am { text-decoration: line-through; opacity: .45; }
 .progress { height: 8px; background: var(--bg2); border-radius: 999px; overflow: hidden; margin-top: 8px; }

@@ -124,12 +124,13 @@ function ingText(p, mult = 1) {
 }
 
 const keyOf = item => lower(item.replace(/\(.*?\)/g, '')).replace(/\s+/g, ' ').trim();
-const WATER = /^(su|sıcak su|kaynar su|soğuk su|ılık su|buzlu su)$/;
-const PANTRY = /^(tuz|karabiber|pul biber|kimyon|kekik|kuru nane|zeytinyağı|sıvı yağ|ayçiçek yağı|şeker|toz şeker|un|sumak|yenibahar|tarçın|defne yaprağı|isot|zerdeçal|köri|toz kırmızı biber|tatlı toz biber|sirke|elma sirkesi|üzüm sirkesi|nar ekşisi|karbonat|kabartma tozu|domates salçası|biber salçası|bal|hardal|tahin|susam|çörek otu|limon tuzu|maydanoz kurusu|dereotu kurusu|toz zencefil|kişniş|mısır nişastası|soya sosu|garam masala|muskat|fesleğen|karanfil|tarçın çubuğu|ketçap|kimyon tohumu|kimyon tohumu ya da kimyon|garam masala ya da köri|instant maya)$/;
+const WATER = /^(su|sıcak su|kaynar su|soğuk su|ılık su|buzlu su|sıcak su ya da tavuk suyu)$/;
+const PANTRY = /^(tuz|karabiber|pul biber|kimyon|kekik|kuru nane|zeytinyağı|sıvı yağ|ayçiçek yağı|şeker|toz şeker|un|sumak|yenibahar|tarçın|defne yaprağı|isot|zerdeçal|köri|toz kırmızı biber|tatlı toz biber|kırmızı toz biber|sirke|elma sirkesi|üzüm sirkesi|nar ekşisi|karbonat|kabartma tozu|domates salçası|biber salçası|bal|hardal|tahin|susam|çörek otu|limon tuzu|maydanoz kurusu|dereotu kurusu|toz zencefil|kişniş|mısır nişastası|soya sosu|garam masala|muskat|fesleğen|karanfil|tarçın çubuğu|ketçap|kimyon tohumu|kimyon tohumu ya da kimyon|garam masala ya da köri|instant maya)$/;
 const AISLES = [
   ['🥫 Market (konserve & dünya)', /(konserve|hindistan cevizi|köri ezmesi|pirinç eriştesi|turşu|kapari|fasulye filizi|demirhindi)/],
-  ['🥩 Kasap', /(kıyma|dana|kuzu|bonfile|antrikot|kuşbaşı|incik|sucuk|pastırma|biftek|kaburga|ciğer)/],
   ['🍗 Tavuk', /(tavuk|hindi)/],
+  ['🥩 Kasap', /(kıyma|dana|kuzu|bonfile|antrikot|kuşbaşı|incik|sucuk|pastırma|biftek|kaburga|ciğer)/],
+  ['🌾 Kuru gıda & fırın', /(barbunya|börülce|kuru bakla|pirinc)/],
   ['🐟 Balıkçı', /(levrek|çipura|somon|hamsi|palamut|uskumru|mezgit|karides|alabalık|istavrit|lüfer|barbun|kalamar|midye|balık|lakerda|kalkan|sardalya|ahtapot)/],
   ['🥛 Süt & şarküteri', /(yoğurt|süt|peynir|kaşar|tereyağı|yumurta|(^| )lor|labne|krema|ayran|kefir|hellim|mozzarella|parmesan)/],
   ['🌾 Kuru gıda & fırın', /(bulgur|pirinç|spagetti|penne|linguine|lazanya|kuskus|hamburger ekmeği|fıstığı|yer fıstığı|maya|mercimek|nohut|kuru fasulye|barbunya|börülce kuru|makarna|erişte|(^| )unu?( |$)|yufka|lavaş|ekme(k|ğ)|irmik|yulaf|şehriye|ceviz|fındık|badem|kuş üzümü|çam fıstığı|galeta|tortilla|pide|kinoa|karabuğday|frik|kuru kayısı|kuru erik|zeytin|bakla kuru|maş fasulyesi|nişasta|kadayıf|mantı)/],
