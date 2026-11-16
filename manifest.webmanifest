@@ -1,0 +1,11 @@
+{
+  "name": "Akşam Ne Yesek?",
+  "short_name": "Akşam Yemeği",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#fbf6ef",
+  "theme_color": "#c2410c",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
