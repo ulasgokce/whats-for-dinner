@@ -349,7 +349,8 @@ function viewHome() {
         <li>Seçim anında Ulaş’ın sayfasına düşer: tam tarif, saat saat plan ve alışveriş listesi.</li>
         <li>Öneriler dengelidir: dün kırmızı et yendiyse önce tavuk, sonra balık önerilir. Son 10 günde yenenler geri planda kalır.</li>
       </ol>
-      <p class="muted">Ana ekrana eklemek için tarayıcıda “Paylaş → Ana Ekrana Ekle”.</p>
+      <p class="muted">Ana ekrana eklemek için Safari’de “Paylaş → Ana Ekrana Ekle”.</p>
+      ${notifyHelp()}
       <div class="links">
         <button class="btn ghost sm" data-act="copy" data-text="${esc(viewLink('dila'))}">Dila linkini kopyala</button>
         <button class="btn ghost sm" data-act="copy" data-text="${esc(viewLink('ulas'))}">Ulaş linkini kopyala</button>
@@ -525,6 +526,7 @@ function ulasRecipe(date) {
       <ul class="ing big">${r.i.map(parseIng).map(x => x.head ? `<li class="h">${esc(x.head)}</li>` : `<li>${esc(ingText(x, mult))}</li>`).join('')}</ul>
       ${r.tip ? `<p class="tip">💡 ${esc(r.tip)}</p>` : ''}
       ${measuresGuide()}
+      <details class="measures"><summary>📲 Bildirim kurulumu (ntfy)</summary>${notifyHelp()}</details>
     </section>
     </div>`;
 }
@@ -546,11 +548,14 @@ function notifyHelp() {
   return `<div class="notify">
     <b>📲 Bildirim kur (bir kez):</b>
     <ol>
-      <li>Telefona ücretsiz <b>ntfy</b> uygulamasını indir (App Store / Google Play).</li>
-      <li>“+” ile abone ol, konu adı: <code>${esc(notifyTopic)}</code></li>
-      <li>Dila her seçim yaptığında telefonuna bildirim gelir.</li>
+      <li>iPhone’a ücretsiz <b>ntfy</b> uygulamasını indir.</li>
+      <li>Uygulamada “+” ile abone ol, konu adı: <code>${esc(notifyTopic)}</code> (sunucu: ntfy.sh, varsayılan)</li>
+      <li>Bildirimlere izin ver. Dila her seçim yaptığında telefonuna bildirim gelir.</li>
     </ol>
-    <button class="btn ghost sm" data-act="copy" data-text="${esc(notifyTopic)}">Konu adını kopyala</button>
+    <div class="actions">
+      <a class="btn primary sm" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener"> App Store’dan indir</a>
+      <button class="btn ghost sm" data-act="copy" data-text="${esc(notifyTopic)}">Konu adını kopyala</button>
+    </div>
   </div>`;
 }
 
