@@ -217,3 +217,15 @@
           [52, "Bir kaşık yoğurtla servis yap."]] }]
   });
 })();
+
+/* Detaylı adımlar ve alternatifler: DETAIL(id, toplamDakika, adımlar, alternatifler) */
+window.DETAIL = (function () {
+  const byId = Object.fromEntries((window.RECIPES || []).map(r => [r.id, r]));
+  return (id, t, s, a) => {
+    const r = byId[id];
+    if (!r) { console.warn('DETAIL: tarif yok', id); return; }
+    if (t) r.t = t;
+    if (s) r.s = s.slice().sort((x, y) => x[0] - y[0]);
+    if (a) r.a = a;
+  };
+})();

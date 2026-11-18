@@ -277,3 +277,7 @@ code { background: var(--card); border: 1px solid var(--line); padding: 1px 6px;
 .sheet input[type=number] { width: 80px; }
 body[data-view="ulas"] main { padding-bottom: 96px; }
 @media (max-width: 520px) { .timeline .timer-btn { margin-left: 86px; } }
+.alts { background: var(--bg2); border-radius: 12px; padding: 10px 14px; margin-top: 10px; }
+.alts h4 { margin: 0 0 6px; }
+.alts ul { margin: 0; padding-left: 18px; font-size: .92rem; }
+.alts li { margin-bottom: 4px; }

@@ -693,6 +693,7 @@ function ulasRecipe(date) {
       <h3>🧺 Malzemeler ${mult === 2 ? '(4 porsiyon)' : '(2 porsiyon)'}</h3>
       <ul class="ing big">${ings.map(x => x.head ? `<li class="h">${esc(x.head)}</li>` : `<li>${esc(ingText(x, mult))}</li>`).join('')}</ul>
       ${r.tip ? `<p class="tip">💡 ${esc(r.tip)}</p>` : ''}
+      ${r.a?.length ? `<div class="alts"><h4>🔁 Elinde yoksa / alternatifler</h4><ul>${r.a.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
       ${measuresGuide()}
       <details class="measures"><summary>📲 Bildirim kurulumu (ntfy)</summary>${notifyHelp()}</details>
     </section>
