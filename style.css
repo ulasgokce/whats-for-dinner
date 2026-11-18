@@ -241,3 +241,39 @@ code { background: var(--card); border: 1px solid var(--line); padding: 1px 6px;
 }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Yöntem, fırın, adım miktarları */
+.method .chips { margin-top: 4px; }
+.warn { background: color-mix(in srgb, #d97706 16%, transparent); border-radius: 12px; padding: 10px 14px; margin: 10px 0 0; }
+.oven-row { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+.oven-big { font: 700 2rem/1 Fraunces, Georgia, serif; color: var(--accent); }
+.oven p { margin: 10px 0 0; }
+.opts { margin: 6px 0 10px; }
+.opts select { font: inherit; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.timeline span em { display: block; font-style: normal; margin-top: 4px; }
+.timeline .amts { font-size: .86rem; color: var(--ink); background: var(--bg2); border-radius: 8px; padding: 4px 8px; width: fit-content; max-width: 100%; }
+.timeline .amts::before { content: "📏 "; }
+.timeline .oven-chip { font-size: .84rem; color: var(--accent); font-weight: 600; }
+.timeline li.shop label, .timeline li.prep label { background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.timeline .timer-btn { margin: -6px 0 8px 96px; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 3px 10px; font-size: .8rem; cursor: pointer; color: var(--accent); font-weight: 600; }
+.reminders { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.soak { border-color: color-mix(in srgb, #6d28d9 45%, var(--line)); background: color-mix(in srgb, #6d28d9 10%, var(--card)); }
+.soak p { margin: 0 0 8px; }
+
+/* Zamanlayıcı */
+.timerbar { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; flex-wrap: wrap-reverse; justify-content: flex-end; max-width: calc(100vw - 32px); z-index: 30; }
+.fab { width: 54px; height: 54px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 1.5rem; box-shadow: var(--shadow); cursor: pointer; }
+.tchip { display: inline-flex; gap: 6px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 6px 6px 12px; box-shadow: var(--shadow); font-size: .85rem; }
+.tchip b { font-variant-numeric: tabular-nums; color: var(--accent); }
+.tchip button { border: 0; background: var(--bg2); border-radius: 50%; width: 24px; height: 24px; cursor: pointer; }
+.tchip.ring { animation: ring 1s ease-in-out infinite; border-color: var(--accent); }
+@keyframes ring { 50% { transform: scale(1.06); } }
+.sheet { position: fixed; inset: auto 0 0 0; z-index: 40; transform: translateY(110%); transition: transform .25s ease; padding: 0 12px calc(12px + env(safe-area-inset-bottom)); }
+.sheet.open { transform: none; }
+.sheet-in { max-width: 560px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 16px; box-shadow: 0 -8px 40px rgba(0, 0, 0, .25); display: flex; flex-direction: column; gap: 10px; }
+.sheet-in h3 { margin: 0; }
+.sheet input[type=text], .sheet input[type=number], .sheet input[type=time] { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.sheet input[type=text] { width: 100%; }
+.sheet input[type=number] { width: 80px; }
+body[data-view="ulas"] main { padding-bottom: 96px; }
+@media (max-width: 520px) { .timeline .timer-btn { margin-left: 86px; } }

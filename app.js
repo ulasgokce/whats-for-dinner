@@ -26,6 +26,23 @@ const CUISINES = {
 RECIPES.forEach(r => { r.cu = r.cu || 'tr'; });
 const isWorld = r => r.cu !== 'tr';
 
+/* Ölçüsüz yazılmış baharatlara somut miktar ver (2 kişilik). */
+const SPICE_DEFAULT = {
+  'karabiber': '0.5 çay kaşığı', 'pul biber': '1 çay kaşığı', 'kekik': '1 çay kaşığı', 'kimyon': '1 çay kaşığı',
+  'sumak': '1 çay kaşığı', 'muskat': '1 tutam', 'fesleğen': '1 çay kaşığı', 'tatlı toz biber': '1 çay kaşığı',
+  'fesleğen ya da kişniş': '0.25 demet', 'kuru nane': '1 çay kaşığı', 'nane': '0.25 demet',
+  'kişniş ya da maydanoz': '0.25 demet', 'yenibahar': '0.5 çay kaşığı',
+};
+RECIPES.forEach(r => {
+  const side = r.i.some(l => /^#/.test(l) && /(pilav|bulgur|püre|patates|kısır|yanına|kâse|salata)/i.test(l));
+  r.i = r.i.map(l => {
+    if (!l.startsWith('|')) return l;
+    const key = l.slice(1).replace(/\(.*?\)/g, '').trim().toLocaleLowerCase('tr');
+    const amt = key === 'tuz' ? (side ? '1.5 çay kaşığı' : '1 çay kaşığı') : SPICE_DEFAULT[key];
+    return amt ? `${amt}${l}` : l;
+  });
+});
+
 /* Dün ne yendiyse bugün için tercih sırası. Kırmızı et → tavuk → balık. */
 const NEXT_PREF = {
   kirmizi: ['tavuk', 'balik', 'bakliyat', 'sebze', 'kirmizi'],
@@ -77,9 +94,9 @@ function hash(str) {
 
 /* ---------- Durum ---------- */
 const LS = 'aksam-ne-yesek-v1';
-const DEFAULTS = { picks: {}, excluded: [], skips: {}, shuffles: {}, ready: CFG.defaultReady || '19:00', checked: {}, done: {}, twoDay: false, range: 1, lastPub: 0 };
+const DEFAULTS = { picks: {}, excluded: [], skips: {}, shuffles: {}, ready: CFG.defaultReady || '19:00', checked: {}, done: {}, twoDay: false, range: 1, lastPub: 0, variant: {}, pc: false, shop: true, shopMins: 40, rem: {}, timers: [] };
 let S = loadState();
-const UI = { date: today(), filter: 'all', q: '', browse: false, ulasTab: 'tarif', sync: 'bağlanıyor' };
+const UI = { date: today(), filter: 'all', q: '', browse: false, ulasTab: 'tarif', sync: 'bağlanıyor', timerOpen: false };
 
 function loadState() {
   let saved = {};
@@ -463,13 +480,131 @@ function viewUlas() {
       <button role="tab" class="${UI.ulasTab === 'liste' ? 'on' : ''}" data-act="tab" data-tab="liste">🛒 Alışveriş listesi</button>
     </div>
     ${UI.ulasTab === 'tarif' ? ulasRecipe(date) : ulasShopping()}
-  </main>`;
+  </main>
+  ${timerBar()}
+  ${timerSheet()}`;
+}
+
+/* ---------- Pişirme planı: yöntem seçenekleri, fırın, adım miktarları ---------- */
+const OVEN_MODES = {
+  altust: { label: 'Alt-üst ısıtma (fansız)', icon: '☰', hint: 'Fırın düğmesinde üstte ve altta çizgi olan simge' },
+  fan: { label: 'Fanlı (turbo)', icon: '🌀', hint: 'Pervane simgesi; fan sıcak havayı dolaştırır, çıtırlaştırır' },
+  izgara: { label: 'Üst ızgara (grill)', icon: '〰️', hint: 'Üstte zikzak çizgi simgesi; sadece üstten yakın ısı' },
+};
+
+function variantsOf(r) { return [{ k: 'base', n: r.v?.length ? 'Klasik tencere' : 'Klasik', t: r.t, s: r.s }, ...(r.v || [])]; }
+
+function chosenVariant(r, date) {
+  const vs = variantsOf(r);
+  const picked = S.variant?.[`${date}:${r.id}`];
+  if (picked) return vs.find(v => v.k === picked) || vs[0];
+  const p = pickOf(date);
+  const pickedSameDay = p && p.ts && ymd(new Date(p.ts)) === date;
+  if (r.pre && pickedSameDay) {
+    const ns = vs.filter(v => v.ns);
+    return ns.find(v => !!v.pc === !!S.pc) || ns[0] || vs[0];
+  }
+  if (S.pc) return vs.find(v => v.pc && !v.ns) || vs[0];
+  return vs[0];
+}
+
+function planIngredients(r, v) {
+  const lines = r.i.slice();
+  for (const [key, repl] of Object.entries(v?.swap || {})) {
+    const idx = lines.findIndex(l => !l.startsWith('#') && keyOf(l.split('|')[1] || '') === key);
+    if (idx >= 0) lines[idx] = repl;
+  }
+  let section = '';
+  return lines.map(l => {
+    const p = parseIng(l);
+    if (p.head) { section = p.head; return p; }
+    return { ...p, section };
+  });
+}
+
+const STOP = new Set(['adet', 'kuru', 'taze', 'ince', 'tam', 'sıcak', 'soğuk', 'ılık', 'kaynar', 'büyük', 'küçük', 'orta', 'boy', 'yarım', 'haşlanmış', 'dondurulmuş', 'rendelenmiş', 'doğranmış', 'pilavlık', 'köftelik', 'konserve', 'kavanoz', 'ya', 'da', 'ile', 'veya', 'için', 'az', 'yağlı', 'yağsız', 'derisiz', 'kemiksiz', 'kemikli', 'temizlenmiş', 'ayıklanmış', 'porsiyonluk', 'iri', 'bütün', 'ekmeği', 'paket', 'dilim', 'tutam']);
+const LETTERS = 'a-zçğıöşü';
+const softEnd = s => s.replace(/k$/, '[kğ]').replace(/p$/, '[pb]').replace(/t$/, '[td]').replace(/ç$/, '[çc]');
+function stemOf(tok) {
+  let s = tok.replace(/(ları|leri|ları|sı|si|su|sü|ı|i|u|ü)$/, '');
+  if (s.length < 2) s = tok;
+  return s;
+}
+function tokenRegexes(item) {
+  const toks = lower(item.replace(/\(.*?\)/g, '')).split(/[^a-zçğıöşü]+/).filter(t => t && !STOP.has(t));
+  return toks.map(t => {
+    if (t === 'su') return { t, re: new RegExp(`(^|[^${LETTERS}])su(yu|yla|yun|ya|da|dan|)([^${LETTERS}]|$)`) };
+    const s = stemOf(t);
+    if (s.length <= 3) return { t, re: new RegExp(`(^|[^${LETTERS}])${softEnd(s)}(${t.slice(s.length)}|i|ı|u|ü|e|a|in|ın|ini|ını|le|la|ler|lar|yi|yı|yu|yü|ye|ya|)([^${LETTERS}]|$)`) };
+    return { t, re: new RegExp(`(^|[^${LETTERS}])${softEnd(s)}`) };
+  });
+}
+
+function stepIngredients(text, ings) {
+  const low = lower(text);
+  const scored = [];
+  const waterOk = /(sıcak su|(^|[^a-zçğıöşü])su(yu|yunu)? (ve|ekle|dök)|suyu ekle)/.test(low);
+  const saltOff = /tuz (ekleme|atma)/.test(low);
+  ings.forEach((p, idx) => {
+    if (p.head || !p.item) return;
+    const key = keyOf(p.item);
+    if (WATER.test(key) && !waterOk) return;
+    if (key === 'tuz' && saltOff) return;
+    const regs = tokenRegexes(p.item);
+    const hits = regs.filter(x => x.re.test(low)).map(x => x.t);
+    const head = regs.map(x => x.t).find(t => /(salçası|suyu|unu|sosu|nişastası|ezmesi|sütü|yağı)$/.test(t) && regs.length > 1);
+    if (head && !hits.includes(head)) return;
+    if (hits.length) scored.push({ p, idx, hits, total: regs.length || 1 });
+  });
+  // aynı kelimeyi paylaşanlar arasından en uygun olanı tut (kırmızı soğan vs kuru soğan)
+  const keep = scored.filter(a => !scored.some(b => b !== a && a.hits.every(h => b.hits.includes(h)) &&
+    (b.hits.length > a.hits.length || (b.hits.length === a.hits.length && b.hits.length / b.total > a.hits.length / a.total))));
+  // aynı malzeme farklı bölümlerde varsa (ör. sıcak su): adımda o bölümün diğer malzemesi geçiyorsa onu seç
+  const sections = new Set(keep.filter(x => x.p.section).map(x => x.p.section));
+  const byKey = new Map();
+  for (const x of keep) {
+    const k = keyOf(x.p.item);
+    const prev = byKey.get(k);
+    if (!prev) { byKey.set(k, x); continue; }
+    const prefer = cand => (cand.p.section && sections.size && keep.some(o => o !== cand && keyOf(o.p.item) !== k && o.p.section === cand.p.section));
+    if (prefer(x) && !prefer(prev)) byKey.set(k, x);
+    else if (!prefer(x) && !prefer(prev) && !x.p.section && prev.p.section) byKey.set(k, x);
+  }
+  return [...byKey.values()].sort((a, b) => a.idx - b.idx).map(x => x.p);
+}
+
+function ovenText(ov) {
+  const m = OVEN_MODES[ov.m] || OVEN_MODES.altust;
+  return `${ov.t}°C · ${m.icon} ${m.label} · ${ov.r} raf`;
+}
+
+function dateAt(date, mins) { const d = parseYmd(date); d.setMinutes(mins); return d.getTime(); }
+
+function buildPlan(date) {
+  const p = pickOf(date);
+  if (!p || p.leftover) return null;
+  const r = BY_ID[p.id];
+  const v = chosenVariant(r, date);
+  const mult = p.days || 1;
+  const ings = planIngredients(r, v);
+  const end = toMins(S.ready);
+  const start = end - v.t;
+  const items = [];
+  if (S.shop) {
+    const n = shoppingData([date]).reduce((a, [aisle, g]) => a + (aisle.startsWith('🧂') ? 0 : g.length), 0);
+    items.push({ kind: 'shop', at: start - S.shopMins, text: `🛒 Alışverişe çık: ${n} kalem (Alışveriş listesi sekmesi). Eve ${hm(start - 5)}’e kadar dön.` });
+    items.push({ kind: 'prep', at: start - 5, text: `🧺 Eve dönünce poşetleri boşalt, bu tarifin malzemelerini tezgaha çıkar, tencere/tavayı hazırla${r.ov ? `, fırını ${ovenText(r.ov)} olarak ayarla` : ''}.` });
+  }
+  v.s.forEach(([off, text], i) => items.push({ kind: 'step', i, at: start + off, text, ings: stepIngredients(text, ings), oven: r.ov && /fırın/i.test(text) }));
+  items.push({ kind: 'serve', at: end, text: '🍽️ Servis! Afiyet olsun.' });
+  return { p, r, v, mult, ings, start, end, items };
 }
 
 function ulasRecipe(date) {
   const p = pickOf(date);
+  const tomorrowBanner = soakBanner(date);
   if (!p) {
-    return `<section class="panel empty">
+    return `${tomorrowBanner}<section class="panel empty">
       <div class="big">⏳</div>
       <h2>${dayLabel(date)} için Dila henüz seçmedi</h2>
       <p class="muted">Seçim yapıldığı an burada görünecek. Telefonuna bildirim gelmesi için aşağıdaki adımı bir kez yap.</p>
@@ -478,58 +613,219 @@ function ulasRecipe(date) {
   }
   const r = BY_ID[p.id];
   if (p.leftover) {
-    return `<section class="panel recipe-head">${photo(r, 'wide')}
+    return `${tomorrowBanner}<section class="panel recipe-head">${photo(r, 'wide')}
       <div class="rh-b"><div class="tags">${catTag(r)}<span class="tag plain">♻️ Dünden kalan</span></div>
       <h2>${esc(r.n)}</h2>
-      <p>Bugün pişirmek yok 🎉 Dün iki günlük yaptın. Yemeği tencereyle kısık ateşte 10–15 dakika (gerekirse 2–3 yemek kaşığı su ekleyerek) ya da fırında 180°C’de 15 dakika ısıt. Yanına taze bir salata yap.</p>
+      <p>Bugün pişirmek yok 🎉 Dün iki günlük yaptın. Yemeği tencereyle kısık ateşte 10–15 dakika (gerekirse 2–3 yemek kaşığı su ekleyerek) ya da fırında 180°C alt-üst ısıtmada, orta rafta, üstü folyolu 15 dakika ısıt. Yanına taze bir salata yap.</p>
       ${macros(r)}</div></section>`;
   }
-  const mult = p.days || 1;
-  const ready = S.ready;
-  const end = toMins(ready);
-  const start = end - r.t;
+  const plan = buildPlan(date);
+  const { v, mult, ings, start, end, items } = plan;
   const done = new Set(S.done[date] || []);
-  const nowM = new Date().getHours() * 60 + new Date().getMinutes();
   const isToday = date === today();
-  let currentIdx = -1;
-  if (isToday) r.s.forEach(([off], i) => { if (start + off <= nowM) currentIdx = i; });
+  const nowM = new Date().getHours() * 60 + new Date().getMinutes();
+  let current = -1;
+  if (isToday) items.forEach((it, i) => { if (it.at <= nowM) current = i; });
+  const vs = variantsOf(r);
+  const hasPc = vs.some(x => x.pc);
+  const rem = S.rem?.[date];
 
-  return `<section class="panel recipe-head">
+  return `${tomorrowBanner}<section class="panel recipe-head">
       ${photo(r, 'wide')}
       <div class="rh-b">
         <div class="tags">${catTag(r)}${mult === 2 ? '<span class="tag plain">🍱 2 günlük (4 porsiyon)</span>' : '<span class="tag plain">2 kişilik</span>'}</div>
         <h2>${esc(r.n)}</h2>
         <p class="muted">Dila seçti · ${timeAgo(p.ts)}</p>
         <p>${esc(r.d)}</p>
-        ${macros(r)}
+        ${macros({ ...r, t: v.t })}
       </div>
     </section>
+
+    ${vs.length > 1 ? `<section class="panel method">
+      <h3>🍲 Pişirme yöntemi</h3>
+      <div class="chips">${vs.map(x => `<button class="chip ${x.k === v.k ? 'on' : ''}" data-act="variant" data-date="${date}" data-id="${r.id}" data-k="${x.k}">${x.pc ? '♨️ ' : ''}${esc(x.n)} · ${x.t} dk</button>`).join('')}</div>
+      ${r.pre && !v.ns ? `<p class="warn">⚠️ Bu yöntem için ${esc(r.pre.text.toLocaleLowerCase('tr'))} Islatmadıysan “Islatmadım” seçeneğini seç.</p>` : ''}
+      ${v.ns ? '<p class="muted">Islatma gerekmez; plan buna göre değişti.</p>' : ''}
+    </section>` : ''}
+
+    ${r.ov ? `<section class="panel oven">
+      <h3>🔥 Fırın ayarı</h3>
+      <div class="oven-row"><span class="oven-big">${r.ov.t}°C</span><span><b>${OVEN_MODES[r.ov.m].icon} ${OVEN_MODES[r.ov.m].label}</b><br><small class="muted">${OVEN_MODES[r.ov.m].hint}</small></span><span><b>Raf:</b> ${esc(r.ov.r)}</span></div>
+      ${r.ov.x ? `<p class="muted">${esc(r.ov.x)}</p>` : ''}
+    </section>` : ''}
 
     <div class="cook-grid">
     <section class="panel">
       <div class="row between wrap">
         <h3>⏰ Zaman planı</h3>
-        <label class="ready">Yemek hazır olsun: <input type="time" id="ready" value="${esc(ready)}"></label>
+        <label class="ready">Yemek hazır olsun: <input type="time" id="ready" value="${esc(S.ready)}"></label>
       </div>
-      <p class="start">👉 <b>${hm(start)}</b>’te mutfağa gir · yemek <b>${hm(end)}</b>’de masada</p>
+      <div class="row gap opts">
+        <label class="switch"><input type="checkbox" data-act="shop" ${S.shop ? 'checked' : ''}><i></i><span>🛒 Önce alışverişe gideceğim</span></label>
+        ${S.shop ? `<select id="shopMins" aria-label="Alışveriş süresi">${[20, 30, 40, 60, 90].map(n => `<option value="${n}" ${S.shopMins === n ? 'selected' : ''}>${n} dk</option>`).join('')}</select>` : ''}
+        ${hasPc ? `<label class="switch"><input type="checkbox" data-act="pc" ${S.pc ? 'checked' : ''}><i></i><span>♨️ Düdüklü tencerem var (varsayılan yap)</span></label>` : ''}
+      </div>
+      <p class="start">${S.shop ? `🛒 <b>${hm(start - S.shopMins)}</b>’te alışverişe çık · ` : ''}👉 <b>${hm(start)}</b>’te mutfağa gir · yemek <b>${hm(end)}</b>’de masada</p>
       <ol class="timeline">
-        ${r.s.map(([off, txt], i) => `<li class="${done.has(i) ? 'done' : ''} ${i === currentIdx && !done.has(i) ? 'now' : ''}">
-          <label><input type="checkbox" data-act="step" data-i="${i}" data-date="${date}" ${done.has(i) ? 'checked' : ''}>
-          <time>${hm(start + off)}</time><span>${esc(txt)}</span></label></li>`).join('')}
-        <li class="serve"><label><time>${hm(end)}</time><span>🍽️ Servis! Afiyet olsun.</span></label></li>
+        ${items.map((it, n) => {
+          const isStep = it.kind === 'step';
+          const id = isStep ? it.i : it.kind;
+          const checked = done.has(id);
+          const mins = isStep ? (it.text.match(/(\d+)\s*dk/) || [])[1] : null;
+          return `<li class="${it.kind} ${checked ? 'done' : ''} ${n === current && !checked ? 'now' : ''}">
+            <label>${it.kind === 'serve' ? '<span></span>' : `<input type="checkbox" data-act="step" data-i="${id}" data-date="${date}" ${checked ? 'checked' : ''}>`}
+            <time>${hm(it.at)}</time><span>${esc(it.text)}
+              ${it.oven ? `<em class="oven-chip">🔥 ${esc(ovenText(r.ov))}</em>` : ''}
+              ${it.ings?.length ? `<em class="amts">${it.ings.map(x => esc(ingText(x, mult))).join(' · ')}</em>` : ''}
+            </span></label>
+            ${mins ? `<button class="timer-btn" data-act="qtimer" data-min="${mins}" data-label="${esc(it.text.slice(0, 60))}" title="${mins} dk zamanlayıcı başlat">⏱ ${mins} dk</button>` : ''}
+          </li>`;
+        }).join('')}
       </ol>
       ${mult === 2 ? '<p class="muted">Miktarlar 2 gün için ikiye katlandı. Daha büyük tencere kullan; pişme süresi 5–10 dakika uzayabilir. Yarınki porsiyonu soğuyunca kapalı kapta buzdolabına koy.</p>' : ''}
+      <div class="reminders">
+        <button class="btn primary" data-act="planrem" data-date="${date}">📲 Bu plan için telefonuma hatırlatıcı kur</button>
+        <p class="muted small">${rem ? `✓ ${rem.n} hatırlatıcı kuruldu (${timeAgo(rem.ts)}). Saati değiştirirsen yeniden kur; eskiler iptal edilemez, yoksay.` : 'Alışverişe çıkış, mutfağa giriş ve her adım için ntfy bildirimi gelir; telefon kilitliyken de çalışır.'}</p>
+      </div>
     </section>
 
     <section class="panel">
       <h3>🧺 Malzemeler ${mult === 2 ? '(4 porsiyon)' : '(2 porsiyon)'}</h3>
-      <ul class="ing big">${r.i.map(parseIng).map(x => x.head ? `<li class="h">${esc(x.head)}</li>` : `<li>${esc(ingText(x, mult))}</li>`).join('')}</ul>
+      <ul class="ing big">${ings.map(x => x.head ? `<li class="h">${esc(x.head)}</li>` : `<li>${esc(ingText(x, mult))}</li>`).join('')}</ul>
       ${r.tip ? `<p class="tip">💡 ${esc(r.tip)}</p>` : ''}
       ${measuresGuide()}
       <details class="measures"><summary>📲 Bildirim kurulumu (ntfy)</summary>${notifyHelp()}</details>
     </section>
     </div>`;
 }
+
+function soakBanner(date) {
+  const next = addDays(date, 1);
+  const p = pickOf(next);
+  if (!p || p.leftover) return '';
+  const r = BY_ID[p.id];
+  if (!r.pre) return '';
+  const v = chosenVariant(r, next);
+  if (v.ns) return '';
+  const ing = planIngredients(r, v).find(x => !x.head && keyOf(x.item).includes(r.pre.ing));
+  const amount = ing ? ingText(ing, p.days || 1) : '';
+  return `<section class="panel soak">
+    <h3>🌙 ${date === today() ? 'Bu akşam' : `${dayLabel(date)} akşamı`} yatmadan: yarınki ${esc(r.n)} için</h3>
+    <p>${esc(amount)} → ${esc(r.pre.text)}</p>
+    <div class="actions"><button class="btn ghost sm" data-act="soakrem" data-date="${date}" data-text="${esc(`${amount}: ${r.pre.text}`)}">⏰ 21:00’de hatırlat</button></div>
+  </section>`;
+}
+
+/* ---------- Hatırlatıcılar ve zamanlayıcılar (ntfy zamanlanmış bildirim) ---------- */
+async function scheduleNtfy(atMs, title, message) {
+  if (atMs - Date.now() < 15000) return false;
+  await fetch(NTFY, {
+    method: 'POST',
+    body: JSON.stringify({ topic: notifyTopic, title, message, delay: String(Math.floor(atMs / 1000)), tags: ['alarm_clock'], click: viewLink('ulas'), priority: 4 }),
+  });
+  return true;
+}
+
+async function schedulePlan(date) {
+  const plan = buildPlan(date);
+  if (!plan) return;
+  let n = 0;
+  try {
+    for (const it of plan.items) {
+      const title = it.kind === 'shop' ? '🛒 Alışveriş zamanı' : it.kind === 'serve' ? '🍽️ Yemek saati' : `${hm(it.at)} · ${plan.r.n}`;
+      const extra = it.ings?.length ? `\n${it.ings.map(x => ingText(x, plan.mult)).join(' · ')}` : '';
+      if (await scheduleNtfy(dateAt(date, it.at), title, `${it.text}${extra}`)) n++;
+    }
+    (S.rem ||= {})[date] = { n, ts: Date.now() };
+    save();
+    toast(n ? `✓ ${n} hatırlatıcı kuruldu` : 'Bu planın tüm saatleri geçmiş');
+  } catch {
+    toast('Hatırlatıcı kurulamadı; internet bağlantını kontrol et.');
+  }
+  render();
+}
+
+function startTimer(mins, label) {
+  const at = Date.now() + mins * 60000;
+  const t = { id: String(at), at, label: label || `${mins} dk zamanlayıcı` };
+  (S.timers ||= []).push(t);
+  save();
+  renderTimers();
+  scheduleNtfy(at, '⏱ Süre doldu', t.label).catch(() => {});
+  toast(`⏱ ${mins} dk zamanlayıcı başladı (telefonuna da bildirim gelecek)`);
+}
+
+function startAlarmAt(hhmm, label) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(); d.setHours(h, m, 0, 0);
+  if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1);
+  const t = { id: String(d.getTime()), at: d.getTime(), label: label || `${hhmm} hatırlatıcısı` };
+  (S.timers ||= []).push(t);
+  save();
+  renderTimers();
+  scheduleNtfy(t.at, '⏰ Hatırlatıcı', t.label).catch(() => {});
+  toast(`⏰ ${hhmm} için hatırlatıcı kuruldu`);
+}
+
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.35, 0.7].forEach(off => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.25, ctx.currentTime + off); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + off + 0.3);
+      o.start(ctx.currentTime + off); o.stop(ctx.currentTime + off + 0.3);
+    });
+  } catch { /* ses yok */ }
+  try { navigator.vibrate?.([300, 150, 300]); } catch { /* yok */ }
+}
+
+const fmtLeft = ms => { const s = Math.max(0, Math.round(ms / 1000)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`; };
+
+function timerSheet() {
+  const plan = buildPlan(today());
+  const quick = [];
+  if (plan) {
+    if (S.shop) quick.push([hm(plan.start - S.shopMins), `🛒 Alışverişe çık (${plan.r.n})`]);
+    quick.push([hm(plan.start), `👨‍🍳 Mutfağa gir (${plan.r.n})`]);
+  }
+  return `<div class="sheet ${UI.timerOpen ? 'open' : ''}" id="timer-sheet" role="dialog" aria-label="Hızlı zamanlayıcı">
+    <div class="sheet-in">
+      <div class="row between"><h3>⏱ Hızlı zamanlayıcı</h3><button class="btn link" data-act="timersheet">Kapat</button></div>
+      <input id="timer-label" type="text" placeholder="Ne için? (ör. Bulgur demlendi)" autocomplete="off">
+      <div class="chips">${[1, 3, 5, 10, 15, 20, 25, 30, 45, 60].map(n => `<button class="chip" data-act="qtimer" data-min="${n}">${n} dk</button>`).join('')}</div>
+      <div class="row gap"><input id="timer-custom" type="number" min="1" max="600" placeholder="dk" inputmode="numeric"><button class="btn ghost sm" data-act="qtimercustom">Başlat</button>
+        <span class="muted small">ya da saatte:</span><input id="timer-at" type="time"><button class="btn ghost sm" data-act="qalarm">Kur</button></div>
+      ${quick.length ? `<p class="muted small">Bugünün planı:</p><div class="chips">${quick.map(([t, l]) => `<button class="chip" data-act="qalarmfixed" data-at="${t}" data-label="${esc(l)}">${t} · ${esc(l)}</button>`).join('')}</div>` : ''}
+      <p class="muted small">Sayfa açıksa ses ve titreşimle, kapalıysa ntfy bildirimiyle haber verir.</p>
+    </div>
+  </div>`;
+}
+
+function timerBar() {
+  const ts = (S.timers || []).filter(t => t.at > Date.now() - 60000);
+  return `<div class="timerbar" id="timerbar">
+    ${ts.map(t => `<span class="tchip ${t.at <= Date.now() ? 'ring' : ''}" data-id="${t.id}"><b data-left="${t.at}">${fmtLeft(t.at - Date.now())}</b> ${esc(t.label.slice(0, 28))}<button data-act="tcancel" data-id="${t.id}" aria-label="Kapat">✕</button></span>`).join('')}
+    <button class="fab" data-act="timersheet" aria-label="Hızlı zamanlayıcı">⏱</button>
+  </div>`;
+}
+
+function renderTimers() {
+  const bar = $('#timerbar');
+  if (bar) bar.outerHTML = timerBar();
+}
+
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  for (const t of S.timers || []) {
+    if (!t.fired && t.at <= now) { t.fired = true; changed = true; beep(); toast(`⏱ Süre doldu: ${t.label}`); }
+  }
+  const before = (S.timers || []).length;
+  S.timers = (S.timers || []).filter(t => t.at > now - 60000);
+  if (changed || S.timers.length !== before) { save(); renderTimers(); return; }
+  document.querySelectorAll('[data-left]').forEach(el => { el.textContent = fmtLeft(+el.dataset.left - now); });
+}, 1000);
 
 function measuresGuide() {
   return `<details class="measures"><summary>📏 Ölçü rehberi (tartısız)</summary>
@@ -566,8 +862,7 @@ function shoppingData(dates) {
     if (!p || p.leftover) continue;
     const r = BY_ID[p.id];
     const mult = p.days || 1;
-    for (const line of r.i) {
-      const x = parseIng(line);
+    for (const x of planIngredients(r, chosenVariant(r, d))) {
       if (x.head) continue;
       const key = keyOf(x.item);
       if (WATER.test(key)) continue;
@@ -662,7 +957,13 @@ const ACT = {
     render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     toast(`✓ ${r.n} seçildi, Ulaş’a gönderiliyor`);
-    publishState({ title: `${dayLabel(d.date)} akşam: ${r.n} ${r.e || ''}`, message: `Dila ${dayLabel(d.date).toLocaleLowerCase('tr')} için ${r.n} seçti${days === 2 ? ' (2 günlük)' : ''}. ${S.ready}’de hazır olması için ${hm(toMins(S.ready) - r.t)}’te başla.` });
+    const v = chosenVariant(r, d.date);
+    const soakNote = r.pre ? (v.ns ? ' Islatma için vakit yok: “Islatmadım” yöntemi seçildi.' : ` Önceki akşam: ${r.pre.text}`) : '';
+    publishState({ title: `${dayLabel(d.date)} akşam: ${r.n} ${r.e || ''}`, message: `Dila ${dayLabel(d.date).toLocaleLowerCase('tr')} için ${r.n} seçti${days === 2 ? ' (2 günlük)' : ''}. ${S.ready}’de hazır olması için ${hm(toMins(S.ready) - v.t)}’te başla.${soakNote}` });
+    if (r.pre && !v.ns) {
+      const at = parseYmd(addDays(d.date, -1)); at.setHours(21, 0, 0, 0);
+      scheduleNtfy(at.getTime(), '🌙 Islatma zamanı', `Yarınki ${r.n} için: ${r.pre.text}`).catch(() => {});
+    }
   },
   unpick: d => {
     setPick(d.date, null);
@@ -682,7 +983,8 @@ const ACT = {
   tab: d => { UI.ulasTab = d.tab; render(); },
   step: (d, e) => {
     const set = new Set(S.done[d.date] || []);
-    e.target.checked ? set.add(+d.i) : set.delete(+d.i);
+    const id = Number.isNaN(+d.i) ? d.i : +d.i;
+    e.target.checked ? set.add(id) : set.delete(id);
     S.done[d.date] = [...set];
     save();
     render();
@@ -693,6 +995,20 @@ const ACT = {
   copylist: () => copy(listText()),
   sharelist: () => window.open(`https://wa.me/?text=${encodeURIComponent(listText())}`, '_blank', 'noopener'),
   copy: d => copy(d.text),
+  variant: d => { (S.variant ||= {})[`${d.date}:${d.id}`] = d.k; delete S.done[d.date]; save(); render(); },
+  pc: (d, e) => { S.pc = e.target.checked; save(); render(); },
+  shop: (d, e) => { S.shop = e.target.checked; save(); render(); },
+  planrem: d => schedulePlan(d.date),
+  soakrem: d => {
+    const at = parseYmd(d.date); at.setHours(21, 0, 0, 0);
+    scheduleNtfy(at.getTime(), '🌙 Islatma zamanı', d.text).then(ok => toast(ok ? '✓ 21:00 hatırlatıcısı kuruldu' : '21:00 geçti; şimdi ıslat!')).catch(() => toast('Kurulamadı'));
+  },
+  timersheet: () => { UI.timerOpen = !UI.timerOpen; $('#timer-sheet')?.classList.toggle('open', UI.timerOpen); },
+  qtimer: d => startTimer(+d.min, d.label || $('#timer-label')?.value.trim()),
+  qtimercustom: () => { const n = +$('#timer-custom').value; if (n > 0) startTimer(n, $('#timer-label').value.trim()); },
+  qalarm: () => { const v = $('#timer-at').value; if (v) startAlarmAt(v, $('#timer-label').value.trim()); },
+  qalarmfixed: d => startAlarmAt(d.at, d.label),
+  tcancel: d => { S.timers = (S.timers || []).filter(t => t.id !== d.id); save(); renderTimers(); },
 };
 
 document.addEventListener('click', e => {
@@ -704,6 +1020,7 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.id === 'ready') { S.ready = el.value || '19:00'; save(); render(); return; }
+  if (el.id === 'shopMins') { S.shopMins = +el.value; save(); render(); return; }
   if (el.matches('input[data-act]')) ACT[el.dataset.act]?.(el.dataset, e);
 });
 document.addEventListener('input', e => {
@@ -719,7 +1036,7 @@ document.addEventListener('input', e => {
 
 window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { pollState(); render(); } });
-setInterval(() => { if (route().view === 'ulas') render(); }, 60000);
+setInterval(() => { if (route().view === 'ulas' && !UI.timerOpen && !document.activeElement?.matches('input,select')) render(); }, 60000);
 
 render();
 pollState();
